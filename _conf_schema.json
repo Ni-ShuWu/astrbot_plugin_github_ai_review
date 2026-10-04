@@ -1,0 +1,123 @@
+{
+  "github": {
+    "description": "GitHub 接入与轮询",
+    "type": "object",
+    "items": {
+      "token": {
+        "type": "string",
+        "description": "GitHub Personal Access Token（需 repo 权限）",
+        "default": "",
+        "hint": "用于读取 PR 与发表 Review；自动关闭 PR 需要写权限"
+      },
+      "repositories": {
+        "type": "list",
+        "description": "审查范围仓库列表（owner/repo）",
+        "default": []
+      },
+      "poll_interval_seconds": {
+        "type": "int",
+        "description": "轮询间隔（秒，最小 60）",
+        "default": 300
+      },
+      "guideline_files": {
+        "type": "list",
+        "description": "规范文件相对路径列表",
+        "default": ["CONTRIBUTING.md"],
+        "hint": "如 CONTRIBUTING.md、.github/copilot-instructions.md"
+      },
+      "max_diff_files": {
+        "type": "int",
+        "description": "单次审查最大文件数",
+        "default": 30
+      },
+      "max_diff_chars": {
+        "type": "int",
+        "description": "diff 字符截断阈值",
+        "default": 60000
+      }
+    }
+  },
+  "whitelist": {
+    "description": "白名单策略",
+    "type": "object",
+    "items": {
+      "users": {
+        "type": "list",
+        "description": "用户白名单（GitHub 登录名）",
+        "default": []
+      },
+      "bot_logins": {
+        "type": "list",
+        "description": "忽略的 bot 账号",
+        "default": ["dependabot[bot]"]
+      },
+      "whitelist_action": {
+        "type": "string",
+        "description": "白名单作者的处理方式",
+        "default": "skip",
+        "options": ["skip", "downgrade"],
+        "hint": "skip=不审查；downgrade=仅评论不发表 Review"
+      }
+    }
+  },
+  "review": {
+    "description": "审查行为",
+    "type": "object",
+    "items": {
+      "level": {
+        "type": "string",
+        "description": "审查强度",
+        "default": "normal",
+        "options": ["loose", "normal", "strict"]
+      },
+      "provider_id": {
+        "type": "string",
+        "description": "指定 AstrBot Provider ID（留空用默认模型）",
+        "default": ""
+      },
+      "llm_timeout_seconds": {
+        "type": "int",
+        "description": "LLM 单次调用超时（秒）",
+        "default": 120
+      },
+      "llm_max_retries": {
+        "type": "int",
+        "description": "LLM 调用最大重试次数",
+        "default": 3
+      },
+      "publish_review": {
+        "type": "bool",
+        "description": "是否发表 GitHub Review（关闭则只发汇总评论）",
+        "default": true
+      }
+    }
+  },
+  "security": {
+    "description": "提示词注入防护",
+    "type": "object",
+    "items": {
+      "auto_close_on_injection": {
+        "type": "bool",
+        "description": "检出注入时自动关闭 PR",
+        "default": true
+      },
+      "close_requires": {
+        "type": "string",
+        "description": "关闭判定通道",
+        "default": "any",
+        "options": ["any", "both"],
+        "hint": "any=预扫描或模型任一命中即关闭；both=需双通道（预扫描命中时不调模型，故仅评论留证）"
+      },
+      "label_on_injection": {
+        "type": "string",
+        "description": "注入 PR 打的标签名（留空不打标签）",
+        "default": "prompt-injection"
+      },
+      "close_comment_template": {
+        "type": "text",
+        "description": "注入关闭评论的附加文案（留空用内置）",
+        "default": ""
+      }
+    }
+  }
+}

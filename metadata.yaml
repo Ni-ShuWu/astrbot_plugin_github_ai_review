@@ -1,0 +1,5 @@
+name: astrbot_plugin_github_ai_review
+desc: GitHub PR AI 审查插件：轮询仓库 PR，按 CONTRIBUTING/规范文档进行 AI 审查并发表 Review，支持白名单、强度调节与提示词注入防护（可自动关闭注入 PR）。
+version: v1.0.0
+author: Ni-ShuWu
+repo: https://github.com/Ni-ShuWu/astrbot_plugin_github_ai_review
