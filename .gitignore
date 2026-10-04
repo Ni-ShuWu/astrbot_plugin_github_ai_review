@@ -1,0 +1,4 @@
+state/*.json
+state/*.bak
+__pycache__/
+*.pyc
