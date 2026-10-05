@@ -1,6 +1,7 @@
 """数据模型包：配置模型与审查结果模型。"""
 
 from .config import (
+    REVIEW_LEVELS,
     GitHubConfig,
     PluginConfig,
     ReviewConfig,
@@ -10,6 +11,7 @@ from .config import (
 from .review import IssueSeverity, ReviewIssue, ReviewResult, Verdict
 
 __all__ = [
+    "REVIEW_LEVELS",
     "GitHubConfig",
     "IssueSeverity",
     "PluginConfig",
