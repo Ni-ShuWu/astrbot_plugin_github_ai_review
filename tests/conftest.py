@@ -45,8 +45,9 @@ def _install_astrbot_stub() -> None:
 
     class _Star:
         def __init__(self, context=None, config=None):
+            # 模拟 AstrBot v4.27.5：Star.__init__ 不写 self.config，
+            # 插件必须自行保存构造期传入的配置
             self.context = context
-            self.config = config or {}
 
     class _StarTools:
         @staticmethod
