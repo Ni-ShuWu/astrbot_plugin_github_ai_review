@@ -9,12 +9,15 @@ from __future__ import annotations
 import asyncio
 import random
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from astrbot.api import logger
 
 from .models import PullRequestEvent, PullRequestEventType, PullRequestFile
+
+if TYPE_CHECKING:
+    from .auth import GitHubAppAuth, StaticTokenAuth
 
 _API_BASE = "https://api.github.com"
 _USER_AGENT = "astrbot-plugin-github-ai-review"
@@ -35,29 +38,39 @@ class GitHubPermissionError(GitHubError):
 
 
 class GitHubClient:
-    """GitHub REST 客户端；会话由外部注入以便复用连接池与统一关闭。"""
+    """GitHub REST 客户端；会话与认证策略由外部注入。
 
-    def __init__(self, token: str, session: aiohttp.ClientSession) -> None:
+    auth 为 StaticTokenAuth 或 GitHubAppAuth；令牌按请求现取，
+    GitHub App 模式下自动携带对应仓库的安装令牌。
+    """
+
+    def __init__(
+        self,
+        auth: StaticTokenAuth | GitHubAppAuth,
+        session: aiohttp.ClientSession,
+    ) -> None:
         self._session = session
-        self._headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": _USER_AGENT,
-        }
+        self._auth = auth
 
     async def _request(
         self,
         method: str,
         path: str,
         *,
+        repo: str | None = None,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> tuple[int, Any, aiohttp.typedefs.LooseHeaders]:
         """带退避重试的底层请求；返回 (状态码, JSON 体, 响应头)。"""
 
-        headers = dict(self._headers)
+        token = await self._auth.token_for(repo)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": _USER_AGENT,
+        }
         if extra_headers:
             headers.update(extra_headers)
 
@@ -107,7 +120,7 @@ class GitHubClient:
     async def check_permissions(self, repo: str) -> set[str]:
         """自检 token 对仓库的权限集合，如 {'admin','push','pull'}。"""
 
-        _, body, _ = await self._request("GET", f"/repos/{repo}")
+        _, body, _ = await self._request("GET", f"/repos/{repo}", repo=repo)
         perms = body.get("permissions") or {}
         return {name for name, granted in perms.items() if granted}
 
@@ -123,6 +136,7 @@ class GitHubClient:
             _, body, _ = await self._request(
                 "GET",
                 f"/repos/{repo}/pulls",
+                repo=repo,
                 params={
                     "state": "open",
                     "sort": "updated",
@@ -167,6 +181,7 @@ class GitHubClient:
             _, body, _ = await self._request(
                 "GET",
                 f"/repos/{repo}/pulls/{number}/files",
+                repo=repo,
                 params={"per_page": _PER_PAGE, "page": page},
             )
             for item in body:
@@ -196,6 +211,7 @@ class GitHubClient:
             status, body, resp_headers = await self._request(
                 "GET",
                 f"/repos/{repo}/contents/{path}",
+                repo=repo,
                 params={"ref": "HEAD"},
                 extra_headers=headers,
             )
@@ -232,14 +248,20 @@ class GitHubClient:
         if comments:
             payload["comments"] = comments
         await self._request(
-            "POST", f"/repos/{repo}/pulls/{number}/reviews", json_body=payload
+            "POST",
+            f"/repos/{repo}/pulls/{number}/reviews",
+            repo=repo,
+            json_body=payload,
         )
 
     async def create_comment(self, repo: str, number: int, body: str) -> None:
         """发表 issue 区评论（PR 汇总评论）。"""
 
         await self._request(
-            "POST", f"/repos/{repo}/issues/{number}/comments", json_body={"body": body}
+            "POST",
+            f"/repos/{repo}/issues/{number}/comments",
+            repo=repo,
+            json_body={"body": body},
         )
 
     async def add_label(self, repo: str, number: int, label: str) -> None:
@@ -249,6 +271,7 @@ class GitHubClient:
             await self._request(
                 "POST",
                 f"/repos/{repo}/issues/{number}/labels",
+                repo=repo,
                 json_body={"labels": [label]},
             )
         except GitHubError as exc:
@@ -258,5 +281,8 @@ class GitHubClient:
         """关闭 PR（不合并）。"""
 
         await self._request(
-            "PATCH", f"/repos/{repo}/pulls/{number}", json_body={"state": "closed"}
+            "PATCH",
+            f"/repos/{repo}/pulls/{number}",
+            repo=repo,
+            json_body={"state": "closed"},
         )

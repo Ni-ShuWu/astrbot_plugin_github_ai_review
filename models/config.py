@@ -10,14 +10,26 @@ CLOSE_REQUIRES = ("any", "both")
 
 @dataclass
 class GitHubConfig:
-    """GitHub 接入与轮询配置。"""
+    """GitHub 接入与轮询配置。
 
-    token: str
-    repositories: list[str]
+    认证二选一：GitHub App（app_id + private_key，推荐）或 PAT（token）。
+    """
+
+    token: str = ""  # PAT，App 字段齐全时忽略
+    app_id: int = 0  # GitHub App ID；0 = 未启用 App 模式
+    private_key: str = ""  # App 私钥：PEM 原文（可用 \n 转义）或文件路径
+    installation_id: int = 0  # 固定安装 ID；0 = 按仓库自动发现
+    repositories: list[str] = field(default_factory=list)
     poll_interval_seconds: int = 300
     guideline_files: list[str] = field(default_factory=lambda: ["CONTRIBUTING.md"])
     max_diff_files: int = 30
     max_diff_chars: int = 60_000
+
+    @property
+    def auth_mode(self) -> str:
+        """认证模式：'app' | 'pat'。"""
+
+        return "app" if self.app_id and self.private_key.strip() else "pat"
 
 
 @dataclass
@@ -77,8 +89,17 @@ class PluginConfig:
         sc_raw = section("security")
 
         token = str(gh_raw.get("token", "")).strip()
-        if not token:
-            raise ValueError("github.token 不能为空")
+        app_id = _as_int(gh_raw.get("app_id"), "github.app_id")
+        private_key = str(gh_raw.get("private_key", "")).strip()
+        installation_id = _as_int(
+            gh_raw.get("installation_id"), "github.installation_id"
+        )
+        if bool(app_id) != bool(private_key):
+            raise ValueError("github.app_id 与 github.private_key 必须同时配置")
+        if not app_id and not token:
+            raise ValueError(
+                "未配置 GitHub 认证：请填写 App ID + 私钥（推荐）或 token"
+            )
 
         repositories = _as_str_list(gh_raw.get("repositories"))
         if not repositories:
@@ -105,6 +126,9 @@ class PluginConfig:
         return cls(
             github=GitHubConfig(
                 token=token,
+                app_id=app_id,
+                private_key=private_key,
+                installation_id=installation_id,
                 repositories=repositories,
                 poll_interval_seconds=poll_interval,
                 guideline_files=_as_str_list(gh_raw.get("guideline_files"))
@@ -138,6 +162,18 @@ class PluginConfig:
                 ).strip(),
             ),
         )
+
+
+def _as_int(value: Any, field_name: str) -> int:
+    """将配置值规整为非负整数，兼容数字字符串写法。"""
+
+    if value in (None, ""):
+        return 0
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} 必须是整数") from None
+    return max(result, 0)
 
 
 def _as_str_list(value: Any) -> list[str]:
