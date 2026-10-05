@@ -17,12 +17,54 @@ if str(ROOT) not in sys.path:
 def _install_astrbot_stub() -> None:
     if "astrbot" in sys.modules:
         return
+
+    class _CommandGroup:
+        """filter.command_group 返回的指令组桩，支持 .command 子装饰器。"""
+
+        def __init__(self, func):
+            self.func = func
+
+        def command(self, name: str):
+            return lambda fn: fn
+
+    class _FilterStub:
+        PermissionType = types.SimpleNamespace(ADMIN="admin", MEMBER="member")
+
+        @staticmethod
+        def command_group(name: str):
+            return lambda fn: _CommandGroup(fn)
+
+        @staticmethod
+        def permission_type(perm):
+            return lambda fn: fn
+
+    class _Star:
+        def __init__(self, context=None, config=None):
+            self.context = context
+            self.config = config or {}
+
+    class _StarTools:
+        @staticmethod
+        def get_data_dir(name: str) -> Path:
+            return Path(name)
+
     astrbot = types.ModuleType("astrbot")
     api = types.ModuleType("astrbot.api")
     api.logger = logging.getLogger("gh-review-test")
+    event = types.ModuleType("astrbot.api.event")
+    event.AstrMessageEvent = object
+    event.filter = _FilterStub()
+    star = types.ModuleType("astrbot.api.star")
+    star.Context = object
+    star.Star = _Star
+    star.StarTools = _StarTools
     astrbot.api = api
+    api.event = event
+    api.star = star
     sys.modules["astrbot"] = astrbot
     sys.modules["astrbot.api"] = api
+    sys.modules["astrbot.api.event"] = event
+    sys.modules["astrbot.api.star"] = star
 
 
 _install_astrbot_stub()
