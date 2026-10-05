@@ -151,8 +151,8 @@ class GitHubAIReview(Star):
         await selfcheck(plugin_config.github, self._gh, self._auth, self._publisher)
         return "✅ 已重载配置、Prompt 模板与规范缓存"
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command_group("pr_review")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     def pr_review(self):
         """GitHub PR AI 审查管理指令组。"""
 
