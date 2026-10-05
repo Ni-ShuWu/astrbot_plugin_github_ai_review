@@ -30,7 +30,7 @@ from core.state_store import CursorStore
 from github.auth import GitHubAppAuthError
 from github.client import GitHubClient
 from llm.client import LLMClient
-from models import REVIEW_LEVELS, PluginConfig
+from models.config import REVIEW_LEVELS, PluginConfig
 from security.injection import InjectionScanner
 
 _HELP = """📋 GitHub PR AI 审查
