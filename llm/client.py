@@ -46,8 +46,11 @@ class LLMClient:
         self._config = config
         self._semaphore = asyncio.Semaphore(_LLM_CONCURRENCY)
 
-    def _resolve_provider(self):
+    async def _resolve_provider(self):
         """按优先级解析 Provider：指定 provider_id → 默认 provider。
+
+        默认 Provider 优先使用 AstrBot 的异步接口
+        （get_using_provider_async，v4.27+ 推荐），旧版本回退同步接口。
 
         :raises LLMError: 无可用 Provider 时抛出。
         """
@@ -61,7 +64,12 @@ class LLMClient:
                     f"{self._config.provider_id}，回退默认 Provider"
                 )
         if provider is None:
-            provider = self._context.get_using_provider()
+            get_async = getattr(self._context, "get_using_provider_async", None)
+            if callable(get_async):
+                provider = await get_async()
+            else:
+                get_sync = getattr(self._context, "get_using_provider", None)
+                provider = get_sync() if callable(get_sync) else None
         if provider is None:
             raise LLMError("无可用 LLM Provider，请在 AstrBot 中接入模型或配置 provider_id")
         return provider
@@ -81,7 +89,7 @@ class LLMClient:
         last_error: Exception | None = None
         for attempt in range(self._config.llm_max_retries):
             try:
-                provider = self._resolve_provider()
+                provider = await self._resolve_provider()
                 resp = await asyncio.wait_for(
                     provider.text_chat(prompt=user, system_prompt=system),
                     timeout=self._config.llm_timeout_seconds,

@@ -46,8 +46,11 @@ _HELP = """📋 GitHub PR AI 审查
 class GitHubAIReview(Star):
     """GitHub PR AI 审查插件。"""
 
-    def __init__(self, context: Context, config: dict) -> None:
+    def __init__(self, context: Context, config: dict | None = None) -> None:
         super().__init__(context, config)
+        # AstrBot v4.27.5 起 Star.__init__ 不再写入 self.config（配置改由
+        # StarMetadata 持有），插件需自行保存构造期传入的配置对象。
+        self.config: dict = config if config is not None else {}
         self._session: aiohttp.ClientSession | None = None
         self._poller: Poller | None = None
         self._pipeline: ReviewPipeline | None = None
@@ -87,6 +90,13 @@ class GitHubAIReview(Star):
             f"强度 {plugin_config.review.level}，"
             f"认证 {plugin_config.github.auth_mode}"
         )
+
+    def _save_config(self) -> None:
+        """持久化插件配置；配置对象未必实现 save_config。"""
+
+        save = getattr(self.config, "save_config", None)
+        if callable(save):
+            save()
 
     def _build_components(self, plugin_config: PluginConfig) -> None:
         """由配置重建全部业务组件（reload 热替换）。"""
@@ -240,7 +250,7 @@ class GitHubAIReview(Star):
             )
             return
         self.config["review"]["level"] = value
-        self.config.save_config()
+        self._save_config()
         await self._reload()
         yield event.plain_result(f"✅ 审查强度已切换为 {value}")
 
@@ -267,7 +277,7 @@ class GitHubAIReview(Star):
         elif action not in ("add", "del"):
             yield event.plain_result("❌ 未知操作，支持 add/del/list")
             return
-        self.config.save_config()
+        self._save_config()
         await self._reload()
         yield event.plain_result(f"✅ 白名单: {', '.join(users) or '（空）'}")
 
@@ -283,7 +293,7 @@ class GitHubAIReview(Star):
             )
             return
         self.config["security"]["auto_close_on_injection"] = value == "on"
-        self.config.save_config()
+        self._save_config()
         await self._reload()
         yield event.plain_result(
             f"✅ 注入自动关闭已{'开启' if value == 'on' else '关闭'}"
