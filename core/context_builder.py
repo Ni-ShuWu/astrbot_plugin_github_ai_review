@@ -71,6 +71,11 @@ class GuidelineCache:
             self._entries[key] = (content, new_etag, time.monotonic())
             return content
 
+    def rebind(self, github: "GitHubClient") -> None:
+        """reload 重建 client 后重绑引用，避免缓存继续持有旧认证。"""
+
+        self._gh = github
+
     def clear(self) -> None:
         """reload 指令时强制失效。"""
 

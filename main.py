@@ -4,7 +4,13 @@
 支持白名单、审查强度调节与提示词注入防护（可自动关闭注入 PR）。
 """
 
+# AstrBot 按包路径导入插件，插件目录不在 sys.path，需先引导再导入本地模块
+import sys
 from pathlib import Path
+
+_PLUGIN_DIR = str(Path(__file__).resolve().parent)
+if _PLUGIN_DIR not in sys.path:
+    sys.path.insert(0, _PLUGIN_DIR)
 
 import aiohttp
 from astrbot.api import logger
@@ -19,7 +25,9 @@ from core.prompt_store import PromptStore
 from core.publisher import Publisher
 from core.result_parser import ResultParser
 from core.review_engine import ReviewEngine
+from core.selfcheck import Auth, build_auth, selfcheck
 from core.state_store import CursorStore
+from github.auth import GitHubAppAuthError
 from github.client import GitHubClient
 from llm.client import LLMClient
 from models import REVIEW_LEVELS, PluginConfig
@@ -47,6 +55,7 @@ class GitHubAIReview(Star):
         self._prompts: PromptStore | None = None
         self._builder: ContextBuilder | None = None
         self._gh: GitHubClient | None = None
+        self._auth: Auth | None = None
         self._cursor: CursorStore | None = None
         self._plugin_config: PluginConfig | None = None
 
@@ -63,14 +72,20 @@ class GitHubAIReview(Star):
         data_dir.mkdir(parents=True, exist_ok=True)
         self._cursor = CursorStore(data_dir / "seen_prs.json")
         self._prompts = PromptStore(Path(__file__).parent / "prompts")
-        self._build_components(plugin_config)
-        await self._selfcheck(plugin_config)
+        try:
+            self._build_components(plugin_config)
+        except GitHubAppAuthError as exc:
+            logger.error(f"[gh-review] GitHub App 认证配置无效，插件未启动: {exc}")
+            return
+        assert self._gh and self._auth and self._publisher
+        await selfcheck(plugin_config.github, self._gh, self._auth, self._publisher)
         assert self._poller is not None
         self._poller.start()
         logger.info(
             f"[gh-review] 已启动：仓库 {plugin_config.github.repositories}，"
             f"间隔 {plugin_config.github.poll_interval_seconds}s，"
-            f"强度 {plugin_config.review.level}"
+            f"强度 {plugin_config.review.level}，"
+            f"认证 {plugin_config.github.auth_mode}"
         )
 
     def _build_components(self, plugin_config: PluginConfig) -> None:
@@ -78,10 +93,12 @@ class GitHubAIReview(Star):
 
         assert self._session and self._cursor and self._prompts
         self._plugin_config = plugin_config
-        self._gh = GitHubClient(plugin_config.github.token, self._session)
+        self._auth = build_auth(plugin_config.github, self._session)
+        self._gh = GitHubClient(self._auth, self._session)
         builder = ContextBuilder(self._gh, plugin_config.github)
-        if self._builder:  # 复用规范缓存
+        if self._builder:  # 复用规范缓存并重绑新认证
             builder.guideline_cache = self._builder.guideline_cache
+            builder.guideline_cache.rebind(self._gh)
         self._builder = builder
         llm = LLMClient(self.context, plugin_config.review)
         engine = ReviewEngine(
@@ -107,23 +124,6 @@ class GitHubAIReview(Star):
         )
         self._poller_restart_needed = old_poller is not None
 
-    async def _selfcheck(self, plugin_config: PluginConfig) -> None:
-        """启动权限自检：无 push 权限时降级关闭能力。"""
-
-        assert self._gh and self._publisher
-        for repo in plugin_config.github.repositories:
-            try:
-                perms = await self._gh.check_permissions(repo)
-            except Exception as exc:  # noqa: BLE001 - 自检失败不阻断启动
-                logger.warning(f"[gh-review] 权限自检失败 {repo}: {exc}")
-                continue
-            if "push" not in perms and "admin" not in perms:
-                self._publisher.can_close = False
-                logger.warning(
-                    f"[gh-review] token 对 {repo} 无写权限，"
-                    "自动关闭与 Review 能力降级为仅评论"
-                )
-
     async def terminate(self) -> None:
         """停止轮询并释放会话。"""
 
@@ -139,13 +139,16 @@ class GitHubAIReview(Star):
             plugin_config = PluginConfig.from_dict(self.config)
         except ValueError as exc:
             return f"❌ 配置无效: {exc}"
-        self._build_components(plugin_config)
+        try:
+            self._build_components(plugin_config)
+        except GitHubAppAuthError as exc:
+            return f"❌ GitHub App 认证配置无效: {exc}"
         self._prompts.reload()
         self._builder.guideline_cache.clear()
         if getattr(self, "_poller_restart_needed", False):
             await self._poller.stop()
         self._poller.start()
-        await self._selfcheck(plugin_config)
+        await selfcheck(plugin_config.github, self._gh, self._auth, self._publisher)
         return "✅ 已重载配置、Prompt 模板与规范缓存"
 
     @filter.permission_type(filter.PermissionType.ADMIN)

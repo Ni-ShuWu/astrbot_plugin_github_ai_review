@@ -5,9 +5,27 @@
     "items": {
       "token": {
         "type": "string",
-        "description": "GitHub Personal Access Token（需 repo 权限）",
+        "description": "Personal Access Token（回退方式，配置了 App 则忽略）",
         "default": "",
-        "hint": "用于读取 PR 与发表 Review；自动关闭 PR 需要写权限"
+        "hint": "推荐使用 GitHub App 认证；PAT 需 repo 权限，自动关闭 PR 需写权限"
+      },
+      "app_id": {
+        "type": "string",
+        "description": "GitHub App ID（推荐认证方式）",
+        "default": "",
+        "hint": "GitHub App 设置页 General → App ID；与私钥同时填写即启用 App 模式"
+      },
+      "private_key": {
+        "type": "text",
+        "description": "GitHub App 私钥（PEM 原文或文件路径）",
+        "default": "",
+        "hint": "粘贴 -----BEGIN RSA PRIVATE KEY----- 开头的完整内容，或填写 .pem 文件绝对路径"
+      },
+      "installation_id": {
+        "type": "string",
+        "description": "Installation ID（留空按仓库自动发现）",
+        "default": "",
+        "hint": "单安装场景可不填；App 安装在多个账号下时建议留空自动发现"
       },
       "repositories": {
         "type": "list",
