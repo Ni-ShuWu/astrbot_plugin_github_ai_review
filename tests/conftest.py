@@ -36,7 +36,12 @@ def _install_astrbot_stub() -> None:
 
         @staticmethod
         def permission_type(perm):
-            return lambda fn: fn
+            # 模拟 AstrBot 真实实现：读取被装饰对象 __name__（RegisteringCommandable 无此属性）
+            def deco(fn):
+                _ = fn.__name__
+                return fn
+
+            return deco
 
     class _Star:
         def __init__(self, context=None, config=None):
